@@ -1,0 +1,22 @@
+services:
+  basoka-bot:
+    build: .
+    container_name: basoka-psn-bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - AUTHORIZED_USER_IDS=${AUTHORIZED_USER_IDS}
+    volumes:
+      # Mount servers.json to persist server data
+      - ./servers.json:/app/servers.json
+      # Mount logs directory if you add logging to files
+      - ./logs:/app/logs
+    networks:
+      - basoka-network
+    # Uncomment if you need to expose ports for server management
+    # ports:
+    #   - "8080:8080"
+
+networks:
+  basoka-network:
+    driver: bridge

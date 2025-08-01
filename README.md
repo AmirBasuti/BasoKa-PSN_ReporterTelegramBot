@@ -49,6 +49,54 @@ AUTHORIZED_USER_IDS=123456789,987654321
 uv run python main.py
 ```
 
+## 🐳 Docker Deployment
+
+For easy deployment and portability, you can run the bot using Docker:
+
+### Prerequisites
+- [Docker](https://docs.docker.com/get-docker/) installed
+- [Docker Compose](https://docs.docker.com/compose/install/) installed
+
+### Quick Docker Setup
+
+1. **Configure Environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your BOT_TOKEN and AUTHORIZED_USER_IDS
+   ```
+
+2. **Deploy with Docker Compose**
+   
+   **Windows:**
+   ```cmd
+   deploy.bat
+   ```
+   
+   **Linux/macOS:**
+   ```bash
+   chmod +x deploy.sh
+   ./deploy.sh
+   ```
+
+3. **Manual Docker Commands** (Alternative)
+   ```bash
+   # Build and run
+   docker-compose up -d --build
+   
+   # View logs
+   docker-compose logs -f
+   
+   # Stop
+   docker-compose down
+   ```
+
+### Docker Benefits
+- 🔒 **Isolated Environment**: No dependency conflicts
+- 📦 **Portable**: Run anywhere with Docker
+- 🚀 **Easy Deployment**: One-command setup
+- 🔄 **Consistent**: Same environment across machines
+- 🛡️ **Secure**: Non-root user execution
+
 ## 🔧 Configuration
 
 ### Getting Your Bot Token
@@ -107,6 +155,10 @@ BasoKa-PSN-Bot/
 ├── server.py          # Server class definition
 ├── servers.json       # Server storage (auto-generated)
 ├── .env.example       # Environment template
+├── Dockerfile         # Docker container definition
+├── docker-compose.yml # Docker orchestration
+├── deploy.sh          # Linux/macOS deployment script
+├── deploy.bat         # Windows deployment script
 └── README.md         # This file
 ```
 
@@ -181,6 +233,12 @@ Servers are stored in `servers.json` with this structure:
 - Install uv using the installation commands above
 - Restart your terminal/command prompt
 - Add uv to your PATH if needed
+
+**Docker issues:**
+- Ensure Docker Desktop is running
+- Check if ports are available (8080)
+- Try `docker-compose down` then `docker-compose up --build`
+- View container logs: `docker-compose logs -f`
 
 **Server connection issues:**
 - Verify server IP and port
