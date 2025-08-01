@@ -24,13 +24,9 @@ If you don't have uv installed:
 
 **Windows:**
 ```powershell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+pip install uv
 ```
-
-**macOS/Linux:**
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+uv dovumentation: [uv Docs](https://docs.astral.sh/uv/)
 
 ### 3. Install Dependencies
 ```bash
