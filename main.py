@@ -28,7 +28,20 @@ def main():
     if not bot_token:
         raise ValueError("BOT_TOKEN environment variable is not set. Please set it to your bot token from BotFather.")
 
-    config = Config(bot_token=bot_token)
+    # Get authorized user IDs from environment variable (comma-separated)
+    authorized_users_env = os.getenv("AUTHORIZED_USER_IDS", "")
+    authorized_user_ids = []
+    if authorized_users_env:
+        try:
+            authorized_user_ids = [int(user_id.strip()) for user_id in authorized_users_env.split(",") if user_id.strip()]
+        except ValueError as e:
+            logger.error(f"Invalid AUTHORIZED_USER_IDS format: {e}")
+            raise ValueError("AUTHORIZED_USER_IDS must be comma-separated integers")
+
+    if not authorized_user_ids:
+        logger.warning("No authorized user IDs set. All requests will be ignored. Set AUTHORIZED_USER_IDS environment variable.")
+
+    config = Config(bot_token=bot_token, authorized_user_ids=authorized_user_ids)
     server_manager = ServerManager()
     bot_handler = BotHandler(config, server_manager)
 
@@ -38,7 +51,7 @@ def main():
     handlers = [
         ("add", bot_handler.add),
         ("log", bot_handler.log),
-        ("start", lambda update, context: bot_handler.start(update)),
+        ("start", lambda update, context: bot_handler.start(update, context)),
         ("list", lambda update , context: bot_handler.list(update, context)),
         ("status", lambda update, context: bot_handler.status(update, context)),
         ("delete", lambda update, context: bot_handler.delete(update, context)),

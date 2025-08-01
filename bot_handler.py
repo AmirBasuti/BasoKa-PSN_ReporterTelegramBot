@@ -3,16 +3,34 @@ from telegram.ext import ContextTypes
 from server_manager import ServerManager
 from config import Config
 import logging
+from functools import wraps
 
 logger = logging.getLogger(__name__)
+
+def authorized_only(func):
+    """Decorator to check if user is authorized before executing command"""
+    @wraps(func)
+    async def wrapper(self, update: Update, *args, **kwargs):
+        if not update.effective_user:
+            logger.warning("No user information in update")
+            return
+        
+        user_id = update.effective_user.id
+        if user_id not in self.config.authorized_user_ids:
+            logger.info(f"Unauthorized access attempt from user ID: {user_id}")
+            # Silently ignore unauthorized requests (no response)
+            return
+        
+        return await func(self, update, *args, **kwargs)
+    return wrapper
 
 class BotHandler:
     def __init__(self, config: Config, server_manager: ServerManager):
         self.config = config
         self.server_manager = server_manager
 
-    @staticmethod
-    async def start(update: Update):
+    @authorized_only
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE = None):
         try:
             if update.message:
                 await update.message.reply_text(
@@ -31,6 +49,7 @@ class BotHandler:
         except Exception as e:
             logger.error(f"Error in start command: {e}", exc_info=True)
 
+    @authorized_only
     async def add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if len(context.args) < 2:
@@ -47,6 +66,7 @@ class BotHandler:
         except Exception as e:
             logger.error(f"Error in add command: {e}", exc_info=True)
 
+    @authorized_only
     async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if len(context.args) < 1:
@@ -75,6 +95,7 @@ class BotHandler:
             else:
                 logger.warning("Update message is None during error handling in status command.")
 
+    @authorized_only
     async def list(self, update: Update,context: ContextTypes.DEFAULT_TYPE):
 
         servers = self.server_manager.servers()
@@ -84,6 +105,7 @@ class BotHandler:
         server_list = "\n".join(f"• {name}" for name in servers)
         await update.message.reply_text(f"Available servers:\n{server_list}")
 
+    @authorized_only
     async def statusall(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = []
         for name in self.server_manager.servers():
@@ -95,6 +117,7 @@ class BotHandler:
                 results.append(f"⚠️ {name}: {e}")
         await update.message.reply_text("\n".join(results))
 
+    @authorized_only
     async def delete(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(context.args) < 1:
             await update.message.reply_text("Usage: /delete <name>")
@@ -102,6 +125,7 @@ class BotHandler:
         self.server_manager.delete_server(context.args[0])
         await update.message.reply_text(f"✅ Server '{context.args[0]}' deleted.")
 
+    @authorized_only
     async def startserver(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(context.args) < 1:
             await update.message.reply_text("Usage: /startserver <name>")
@@ -116,6 +140,7 @@ class BotHandler:
         except Exception as e:
             await update.message.reply_text(f"⚠️ Failed to start '{server.name}': {e}")
 
+    @authorized_only
     async def stopserver(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(context.args) < 1:
             await update.message.reply_text("Usage: /stopserver <name>")
@@ -130,18 +155,21 @@ class BotHandler:
         except Exception as e:
             await update.message.reply_text(f"⚠️ Failed to stop '{server.name}': {e}")
 
+    @authorized_only
     async def startall(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = await self.server_manager.start_all(self.config)
         if not results:
             results = ["No servers to start."]
         await update.message.reply_text("\n".join(results))
 
+    @authorized_only
     async def stopall(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = await self.server_manager.stop_all(self.config)
         if not results:
             results = ["No servers to stop."]
         await update.message.reply_text("\n".join(results))
 
+    @authorized_only
     async def is_running(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if len(context.args) < 1:
@@ -170,6 +198,7 @@ class BotHandler:
         except Exception as e:
             logger.error(f"Error in is_running command: {e}", exc_info=True)
 
+    @authorized_only
     async def log(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if len(context.args) < 1:
