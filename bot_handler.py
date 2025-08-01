@@ -36,12 +36,16 @@ class BotHandler:
                 await update.message.reply_text(
                     "👋 Welcome to the Server Manager Basoka Bot! Use\n"
                     "/add, \n"
+                    "/log\n"
                     "/list, \n"
                     "/status, \n"
+                    "/delete, \n"
                     "/stopall \n"
                     "/startall, \n"
+                    "/statusall, \n"
                     "/stopserver, \n"
                     "/startserver,\n"
+                    "/is_running, \n"
                     "to manage your servers."
                 )
             else:
