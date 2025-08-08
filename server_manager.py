@@ -72,28 +72,30 @@ class ServerManager:
     async def start_all(self, config):
         results = []
         servers = self._read_servers()
+        if not servers:
+            return ["📭 No servers configured. Use `/add` to add servers."]
+            
         for name, data in servers.items():
             server = Server(name=name, address=data["address"])
             try:
-                await server.start(config)
-                data["running"] = True
-                results.append(f"▶️ Started '{name}'")
+                result = await server.start(config)
+                results.append(f"🎯 **{name}**: {result}")
             except Exception as e:
-                results.append(f"⚠️ Failed to start '{name}': {e}")
-        self._write_servers(servers)
+                results.append(f"🎯 **{name}**: ❌ Error: {e}")
         return results
 
     async def stop_all(self, config):
         results = []
         servers = self._read_servers()
+        if not servers:
+            return ["📭 No servers configured. Use `/add` to add servers."]
+            
         for name, data in servers.items():
             server = Server(name=name, address=data["address"])
             try:
-                await server.stop(config)
-                data["running"] = False
-                results.append(f"⏹️ Stopped '{name}'")
+                result = await server.stop(config)
+                results.append(f"🎯 **{name}**: {result}")
             except Exception as e:
-                results.append(f"⚠️ Failed to stop '{name}': {e}")
-        self._write_servers(servers)
+                results.append(f"🎯 **{name}**: ❌ Error: {e}")
         return results
 

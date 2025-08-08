@@ -1,0 +1,8 @@
+# Telegram Bot API
+python-telegram-bot>=20.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# HTTP requests for server communication
+requests>=2.28.0

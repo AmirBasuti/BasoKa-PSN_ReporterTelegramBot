@@ -13,12 +13,12 @@ RUN apt-get update && apt-get install -y \
 # Add uv to PATH
 ENV PATH="/root/.cargo/bin:$PATH"
 
-# Copy project files
-COPY pyproject.toml uv.lock ./
+# Copy project files (check if pyproject.toml exists, if not use requirements.txt)
+COPY requirements.txt ./
 COPY *.py ./
 
-# Install Python dependencies using uv
-RUN uv sync --frozen
+# Install Python dependencies using pip (fallback if uv not available)
+RUN pip install -r requirements.txt
 
 # Create a non-root user for security
 RUN useradd --create-home --shell /bin/bash app \
@@ -29,4 +29,4 @@ USER app
 EXPOSE 8080
 
 # Command to run the bot
-CMD ["uv", "run", "python", "main.py"]
+CMD ["python", "main.py"]

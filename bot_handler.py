@@ -34,19 +34,24 @@ class BotHandler:
         try:
             if update.message:
                 await update.message.reply_text(
-                    "👋 Welcome to the Server Manager Basoka Bot! Use\n"
-                    "/add, \n"
-                    "/log\n"
-                    "/list, \n"
-                    "/status, \n"
-                    "/delete, \n"
-                    "/stopall \n"
-                    "/startall, \n"
-                    "/statusall, \n"
-                    "/stopserver, \n"
-                    "/startserver,\n"
-                    "/is_running, \n"
-                    "to manage your servers."
+                    "🎮 **Welcome to BasoKa PSN Bot!**\n\n"
+                    "📋 **Server Management:**\n"
+                    "• `/add <name> <ip:port>` - Add PSN server\n"
+                    "• `/list` - List all servers\n"
+                    "• `/delete <name>` - Remove server\n\n"
+                    "🎯 **PSN Checker Control:**\n"
+                    "• `/startserver <name>` - Start PSN checker\n"
+                    "• `/stopserver <name>` - Stop PSN checker\n"
+                    "• `/status <name>` - Get detailed status\n"
+                    "• `/is_running <name>` - Quick running check\n\n"
+                    "📊 **Monitoring:**\n"
+                    "• `/log <name> [lines]` - View recent logs\n"
+                    "• `/stats <name>` - Login statistics\n"
+                    "• `/statusall` - All servers status\n\n"
+                    "⚡ **Bulk Operations:**\n"
+                    "• `/startall` - Start all checkers\n"
+                    "• `/stopall` - Stop all checkers\n\n"
+                    "🔐 *Only authorized users can use this bot*"
                 )
             else:
                 logger.warning("Update message is None in start command.")
@@ -221,7 +226,7 @@ class BotHandler:
             try:
                 log_data = await server.get_log(self.config)
                 if update.message:
-                    await update.message.reply_text(f"✅ Log of '{server.name}':\n{log_data['log']}")
+                    await update.message.reply_text(f"✅ Log of '{server.name}':\n{log_data}")
                 else:
                     logger.warning("Update message is None after retrieving log.")
             except Exception as e:
@@ -230,3 +235,59 @@ class BotHandler:
                 logger.error(f"Error retrieving log: {e}", exc_info=True)
         except Exception as e:
             logger.error(f"Error in log command: {e}", exc_info=True)
+
+    @authorized_only
+    async def stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Get detailed login statistics for a PSN server"""
+        try:
+            if len(context.args) < 1:
+                if update.message:
+                    await update.message.reply_text("📋 **Usage**: `/stats <server_name>`\n\nExample: `/stats psn1`")
+                return
+                
+            server = self.server_manager.get_server(context.args[0])
+            if not server:
+                if update.message:
+                    await update.message.reply_text(f"❌ Server '{context.args[0]}' not found.\n\nUse `/list` to see available servers.")
+                return
+
+            stats_info = await server.get_statistics(self.config)
+            if update.message:
+                await update.message.reply_text(stats_info, parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Error in stats command: {e}", exc_info=True)
+            if update.message:
+                await update.message.reply_text(f"⚠️ Failed to get statistics: {e}")
+
+    @authorized_only
+    async def logs(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Enhanced log command with line count parameter"""
+        try:
+            if len(context.args) < 1:
+                if update.message:
+                    await update.message.reply_text("📋 **Usage**: `/logs <server_name> [lines]`\n\nExample: `/logs psn1 100`")
+                return
+                
+            server = self.server_manager.get_server(context.args[0])
+            if not server:
+                if update.message:
+                    await update.message.reply_text(f"❌ Server '{context.args[0]}' not found.")
+                return
+                
+            # Get number of lines from second argument, default to 50
+            lines = 50
+            if len(context.args) > 1:
+                try:
+                    lines = int(context.args[1])
+                    if lines <= 0 or lines > 500:
+                        lines = 50
+                except ValueError:
+                    lines = 50
+                    
+            log_data = await server.get_log(self.config, lines)
+            if update.message:
+                await update.message.reply_text(log_data, parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Error in logs command: {e}", exc_info=True)
+            if update.message:
+                await update.message.reply_text(f"⚠️ Failed to retrieve log: {e}")
