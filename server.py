@@ -57,7 +57,7 @@ class Server:
                 
                 # Add login statistics if available
                 if login_stats and 'total_attempts' in login_stats:
-                    status_text += f"\n📊 **Login Statistics**:\n"
+                    status_text += "\n📊 **Login Statistics**:\n"
                     status_text += f"✅ Success: {login_stats.get('success_count', 0)}\n"
                     status_text += f"❌ Failed: {login_stats.get('failed_count', 0)}\n"
                     status_text += f"🔄 Retries: {login_stats.get('retry_count', 0)}\n"
@@ -83,7 +83,7 @@ class Server:
                     pid = result.get('pid', 'unknown')
                     return f"✅ PSN Checker started successfully (PID: {pid})"
                 elif status == 'already_running':
-                    return f"ℹ️ PSN Checker is already running"
+                    return "ℹ️ PSN Checker is already running"
                 else:
                     return f"⚠️ Start failed: {message}"
             return "❌ Failed to start"
@@ -101,9 +101,9 @@ class Server:
                 
                 if status == 'stopped':
                     self.running = False
-                    return f"✅ PSN Checker stopped successfully"
+                    return "✅ PSN Checker stopped successfully"
                 elif status == 'not_running':
-                    return f"ℹ️ PSN Checker was not running"
+                    return "ℹ️ PSN Checker was not running"
                 else:
                     return f"⚠️ Stop failed: {message}"
             return "❌ Failed to stop"
@@ -111,7 +111,7 @@ class Server:
             logger.error(f"Error stopping {self.name}: {e}")
             return f"❌ Error: {str(e)}"
 
-    async def is_running(self, config) -> str:
+    async def is_running(self, config) -> bool:
         """Check if the PSN checker process is running"""
         try:
             result = self._make_request('GET', config.endpoints['status'], config)
@@ -119,14 +119,14 @@ class Server:
                 process_info = result.get('process_info', {})
                 is_running = process_info.get('running', False)
                 pid = process_info.get('pid')
-                
+
                 if is_running and pid:
-                    return f"✅ Running (PID: {pid})"
+                    return True
                 elif is_running:
-                    return f"✅ Running"
+                    return True
                 else:
-                    return f"❌ Not running"
-            return "❓ Status unknown"
+                    return False
+            return False
         except Exception as e:
             logger.error(f"Error checking running status for {self.name}: {e}")
             return f"❌ Error: {str(e)}"

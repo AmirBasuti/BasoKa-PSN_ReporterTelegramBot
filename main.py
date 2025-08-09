@@ -51,7 +51,6 @@ def main():
     handlers = [
         ("add", bot_handler.add),
         ("log", bot_handler.log),
-        ("logs", bot_handler.logs),
         ("stats", bot_handler.stats),
         ("start", lambda update, context: bot_handler.start(update, context)),
         ("list", lambda update , context: bot_handler.list(update, context)),

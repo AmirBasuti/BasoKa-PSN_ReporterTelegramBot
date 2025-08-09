@@ -1,338 +1,327 @@
-from telegram import Update
-from telegram.ext import ContextTypes
-from server_manager import ServerManager
-from config import Config
 import logging
 from functools import wraps
+from telegram import Update
+from telegram.ext import ContextTypes
+
+# Assuming these modules are correctly implemented
+from server_manager import ServerManager
+from config import Config
 
 logger = logging.getLogger(__name__)
 
+# --- Constants for consistent replies ---
+CMD_USAGE_ADD = "📋 **Usage**: `/add <name> <ip:port>`"
+CMD_USAGE_DELETE = "📋 **Usage**: `/delete <name>`"
+CMD_USAGE_STATUS = "📋 **Usage**: `/status <name>`"
+CMD_USAGE_START = "📋 **Usage**: `/startserver <name>`"
+CMD_USAGE_STOP = "📋 **Usage**: `/stopserver <name>`"
+CMD_USAGE_IS_RUNNING = "📋 **Usage**: `/is_running <name>`"
+CMD_USAGE_LOG = "📋 **Usage**: `/log <name>`"
+CMD_USAGE_STATS = "📋 **Usage**: `/stats <name>`"
+SERVER_NOT_FOUND = "❌ Server '{name}' not found.\n\nUse `/list` to see available servers."
+NO_SERVERS_FOUND = "❌ No servers found. Use `/add` to add a server."
+
+
 def authorized_only(func):
-    """Decorator to check if user is authorized before executing command"""
+    """Decorator to check if user is authorized before executing a command."""
+
     @wraps(func)
     async def wrapper(self, update: Update, *args, **kwargs):
         if not update.effective_user:
-            logger.warning("No user information in update")
+            logger.warning("No user information in update.")
             return
-        
+
         user_id = update.effective_user.id
         if user_id not in self.config.authorized_user_ids:
             logger.info(f"Unauthorized access attempt from user ID: {user_id}")
-            # Silently ignore unauthorized requests (no response)
+            # Silently ignore unauthorized requests
             return
-        
+
         return await func(self, update, *args, **kwargs)
+
     return wrapper
 
+
+
 class BotHandler:
+    """Handles all bot commands and interactions."""
+
     def __init__(self, config: Config, server_manager: ServerManager):
         self.config = config
         self.server_manager = server_manager
 
+    async def _reply_or_log(self, update: Update, text: str, **kwargs):
+        """Helper to safely send a reply or log a warning if message is None."""
+        if update.message:
+            await update.message.reply_text(text, parse_mode='Markdown', **kwargs)
+        else:
+            logger.warning(f"Failed to send reply '{text}'. Update message is None.")
+
+    async def _handle_missing_args(self, update: Update, usage_message: str, args: list, min_args: int):
+        """Helper to handle commands with missing arguments."""
+        if len(args) < min_args:
+            await self._reply_or_log(update, usage_message)
+            return True
+        return False
+
+    async def _get_server_or_reply(self, update: Update, server_name: str):
+        """Helper to fetch a server and send a reply if it's not found."""
+        server = self.server_manager.get_server(server_name)
+        if not server:
+            await self._reply_or_log(update, SERVER_NOT_FOUND.format(name=server_name))
+        return server
+
+    # --- Command Handlers ---
+
     @authorized_only
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE = None):
-        try:
-            if update.message:
-                await update.message.reply_text(
-                    "🎮 **Welcome to BasoKa PSN Bot!**\n\n"
-                    "📋 **Server Management:**\n"
-                    "• `/add <name> <ip:port>` - Add PSN server\n"
-                    "• `/list` - List all servers\n"
-                    "• `/delete <name>` - Remove server\n\n"
-                    "🎯 **PSN Checker Control:**\n"
-                    "• `/startserver <name>` - Start PSN checker\n"
-                    "• `/stopserver <name>` - Stop PSN checker\n"
-                    "• `/status <name>` - Get detailed status\n"
-                    "• `/is_running <name>` - Quick running check\n\n"
-                    "📊 **Monitoring:**\n"
-                    "• `/log <name> [lines]` - View recent logs\n"
-                    "• `/stats <name>` - Login statistics\n"
-                    "• `/statusall` - All servers status\n\n"
-                    "⚡ **Bulk Operations:**\n"
-                    "• `/startall` - Start all checkers\n"
-                    "• `/stopall` - Stop all checkers\n\n"
-                    "🔐 *Only authorized users can use this bot*"
-                )
-            else:
-                logger.warning("Update message is None in start command.")
-        except Exception as e:
-            logger.error(f"Error in start command: {e}", exc_info=True)
+        """Sends a welcome message with a list of all available commands."""
+        welcome_message = (
+            "🎮 **Welcome to BasoKa PSN Bot!**\n\n"
+            "📋 **Server Management:**\n"
+            "• `/add <name> <ip:port>` - Add a new PSN server\n"
+            "• `/list` - List all configured servers\n"
+            "• `/delete <name>` - Remove a server\n\n"
+            "🎯 **PSN Checker Control:**\n"
+            "• `/startserver <name>` - Start the PSN checker for a server\n"
+            "• `/stopserver <name>` - Stop the PSN checker for a server\n"            
+            "• `/status <name>` - Get detailed status of a server\n"
+            "• `/stats <name>` - Get detailed login statistics for a server\n"
+            "• `/is_running` - Quick check if a servers is running\n\n"
+            "📊 **Monitoring:**\n"
+            "• `/log <name>` - View recent logs (sends file)\n"
+            "⚡ **Bulk Operations:**\n"
+            "• `/startall` - Start all checkers\n"
+            "• `/statusall` - Get status of all servers\n"
+            "• `/stopall` - Stop all checkers\n\n"
+            "🔐 *Only authorized users can use this bot*"
+        )
+        await self._reply_or_log(update, welcome_message)
 
     @authorized_only
     async def add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Adds a new server to the configuration."""
+        if await self._handle_missing_args(update, CMD_USAGE_ADD, context.args, 2):
+            return
+
+        server_name, ip_port = context.args[0], context.args[1]
         try:
-            if len(context.args) < 2:
-                if update.message:
-                    await update.message.reply_text("Usage: /add <name> <ip:port>")
-                else:
-                    logger.warning("Update message is None in add command.")
-                return
-            self.server_manager.add_server(context.args[0], context.args[1])
-            if update.message:
-                await update.message.reply_text(f"✅ Server '{context.args[0]}' added.")
-            else:
-                logger.warning("Update message is None after adding server.")
+            self.server_manager.add_server(server_name, ip_port)
+            await self._reply_or_log(update, f"✅ Server '{server_name}' added successfully.")
         except Exception as e:
-            logger.error(f"Error in add command: {e}", exc_info=True)
+            logger.error(f"Error adding server '{server_name}': {e}", exc_info=True)
+            await self._reply_or_log(update, f"⚠️ Failed to add server '{server_name}': {e}")
 
     @authorized_only
-    async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            if len(context.args) < 1:
-                if update.message:
-                    await update.message.reply_text("Usage: /status <name>")
-                else:
-                    logger.warning("Update message is None in status command.")
-                return
-            server = self.server_manager.get_server(context.args[0])
-            if not server:
-                if update.message:
-                    await update.message.reply_text(f"❌ Server '{context.args[0]}' not found.")
-                else:
-                    logger.warning("Update message is None when server not found.")
-                return
-
-            status = await server.get_status(self.config)
-            if update.message:
-                await update.message.reply_text(f"ℹ️ Status of '{server.name}': {status}")
-            else:
-                logger.warning("Update message is None after fetching server status.")
-        except Exception as e:
-            logger.error(f"Error in status command: {e}", exc_info=True)
-            if update.message:
-                await update.message.reply_text("⚠️ An error occurred while fetching server status.")
-            else:
-                logger.warning("Update message is None during error handling in status command.")
-
-    @authorized_only
-    async def list(self, update: Update,context: ContextTypes.DEFAULT_TYPE):
-
+    async def list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Lists all configured servers."""
         servers = self.server_manager.servers()
         if not servers:
-            await update.message.reply_text("No servers found. Use /add to add a server.")
+            await self._reply_or_log(update, NO_SERVERS_FOUND)
             return
-        server_list = "\n".join(f"• {name}" for name in servers)
-        await update.message.reply_text(f"Available servers:\n{server_list}")
 
-    @authorized_only
-    async def statusall(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        results = []
-        for name in self.server_manager.servers():
-            server = self.server_manager.get_server(name)
-            try:
-                status = await server.get_status(self.config)
-                results.append(f"✅ {name}: {status}")
-            except Exception as e:
-                results.append(f"⚠️ {name}: {e}")
-        await update.message.reply_text("\n".join(results))
+        server_list = "\n".join(f"• `{name}`" for name in servers)
+        await self._reply_or_log(update, f"📋 **Available Servers:**\n{server_list}")
 
     @authorized_only
     async def delete(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if len(context.args) < 1:
-            await update.message.reply_text("Usage: /delete <name>")
+        """Deletes a server from the configuration."""
+        if await self._handle_missing_args(update, CMD_USAGE_DELETE, context.args, 1):
             return
-        self.server_manager.delete_server(context.args[0])
-        await update.message.reply_text(f"✅ Server '{context.args[0]}' deleted.")
+
+        server_name = context.args[0]
+        try:
+            self.server_manager.delete_server(server_name)
+            await self._reply_or_log(update, f"✅ Server '{server_name}' deleted.")
+        except KeyError:
+            await self._reply_or_log(update, SERVER_NOT_FOUND.format(name=server_name))
+        except Exception as e:
+            logger.error(f"Error deleting server '{server_name}': {e}", exc_info=True)
+            await self._reply_or_log(update, f"⚠️ Failed to delete server '{server_name}': {e}")
+
+    @authorized_only
+    async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Gets the detailed status of a specific server."""
+        if await self._handle_missing_args(update, CMD_USAGE_STATUS, context.args, 1):
+            return
+
+        server_name = context.args[0]
+        server = await self._get_server_or_reply(update, server_name)
+        if not server:
+            return
+
+        try:
+            status_text = await server.get_status(self.config)
+            await self._reply_or_log(update, f"ℹ️ **Status of '{server_name}':**\n\n{status_text}")
+        except Exception as e:
+            logger.error(f"Error fetching status for '{server_name}': {e}", exc_info=True)
+            await self._reply_or_log(update, "⚠️ An error occurred while fetching server status.")
+
+    @authorized_only
+    async def statusall(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Gets the status of all configured servers."""
+        results = []
+        if not self.server_manager.servers():
+            await self._reply_or_log(update, NO_SERVERS_FOUND)
+            return
+
+        for name in self.server_manager.servers():
+            server = self.server_manager.get_server(name)
+            try:
+                status_text = await server.get_status(self.config)
+                results.append(f"✅ **{name}**:\n{status_text}\n")
+            except Exception as e:
+                results.append(f"⚠️ **{name}**: Failed to get status - {e}\n")
+
+        await self._reply_or_log(update, "📋 **All Servers Status:**\n\n" + "\n".join(results))
 
     @authorized_only
     async def startserver(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if len(context.args) < 1:
-            await update.message.reply_text("Usage: /startserver <name>")
+        """Starts a specific server."""
+        if await self._handle_missing_args(update, CMD_USAGE_START, context.args, 1):
             return
-        server = self.server_manager.get_server(context.args[0])
+
+        server_name = context.args[0]
+        server = await self._get_server_or_reply(update, server_name)
         if not server:
-            await update.message.reply_text(f"❌ Server '{context.args[0]}' not found.")
             return
+
         try:
             await server.start(self.config)
-            await update.message.reply_text(f"✅ Server '{server.name}' started.")
+            await self._reply_or_log(update, f"✅ Server '{server_name}' started successfully.")
         except Exception as e:
-            await update.message.reply_text(f"⚠️ Failed to start '{server.name}': {e}")
+            logger.error(f"Error starting server '{server_name}': {e}", exc_info=True)
+            await self._reply_or_log(update, f"⚠️ Failed to start '{server_name}': {e}")
 
     @authorized_only
     async def stopserver(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if len(context.args) < 1:
-            await update.message.reply_text("Usage: /stopserver <name>")
+        """Stops a specific server."""
+        if await self._handle_missing_args(update, CMD_USAGE_STOP, context.args, 1):
             return
-        server = self.server_manager.get_server(context.args[0])
+
+        server_name = context.args[0]
+        server = await self._get_server_or_reply(update, server_name)
         if not server:
-            await update.message.reply_text(f"❌ Server '{context.args[0]}' not found.")
             return
+
         try:
             await server.stop(self.config)
-            await update.message.reply_text(f"✅ Server '{server.name}' stopped.")
+            await self._reply_or_log(update, f"✅ Server '{server_name}' stopped successfully.")
         except Exception as e:
-            await update.message.reply_text(f"⚠️ Failed to stop '{server.name}': {e}")
+            logger.error(f"Error stopping server '{server_name}': {e}", exc_info=True)
+            await self._reply_or_log(update, f"⚠️ Failed to stop '{server_name}': {e}")
 
     @authorized_only
     async def startall(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Starts all configured servers."""
         results = await self.server_manager.start_all(self.config)
         if not results:
-            results = ["No servers to start."]
-        await update.message.reply_text("\n".join(results))
+            await self._reply_or_log(update, "❌ No servers to start.")
+            return
+
+        status_lines = [f"• {line}" for line in results]
+        await self._reply_or_log(update, "✅ **Starting all servers...**\n\n" + "\n".join(status_lines))
 
     @authorized_only
     async def stopall(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Stops all configured servers."""
         results = await self.server_manager.stop_all(self.config)
         if not results:
-            results = ["No servers to stop."]
-        await update.message.reply_text("\n".join(results))
+            await self._reply_or_log(update, "❌ No servers to stop.")
+            return
+
+        status_lines = [f"• {line}" for line in results]
+        await self._reply_or_log(update, "✅ **Stopping all servers...**\n\n" + "\n".join(status_lines))
 
     @authorized_only
     async def is_running(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Checks the running status of all servers."""
+        servers = self.server_manager.servers()
+        if not servers:
+            await self._reply_or_log(update, NO_SERVERS_FOUND)
+            return
+
         try:
-            if len(context.args) < 1:
-                if update.message:
-                    await update.message.reply_text("Usage: /is_running <name>")
-                else:
-                    logger.warning("Update message is None in is_running command.")
-                return
-            server = self.server_manager.get_server(context.args[0])
-            if not server:
-                if update.message:
-                    await update.message.reply_text(f"❌ Server '{context.args[0]}' not found.")
-                else:
-                    logger.warning("Update message is None when server not found in is_running command.")
-                return
-            try:
-                running_status = await server.is_running(self.config)
-                if update.message:
-                    await update.message.reply_text(f"✅ Running status of '{server.name}': {running_status}")
-                else:
-                    logger.warning("Update message is None after checking running status.")
-            except Exception as e:
-                if update.message:
-                    await update.message.reply_text(f"⚠️ Failed to check running status of '{server.name}': {e}")
-                logger.error(f"Error checking running status: {e}", exc_info=True)
+            results = []
+            for server_name in servers:
+                server = self.server_manager.get_server(server_name)
+                try:
+                    running_status = await server.is_running(self.config)
+                    status_emoji = "✅" if running_status else "❌"
+                    status_text = "Running" if running_status else "Not Running"
+                    results.append(f"{status_emoji} **{server_name}**: {status_text}")
+                except Exception as e:
+                    logger.error(f"Error checking status for '{server_name}': {e}", exc_info=True)
+                    results.append(f"⚠️ **{server_name}**: Error - {str(e)}")
+
+            await self._reply_or_log(update, "📊 **Servers Running Status:**\n\n" + "\n".join(results))
         except Exception as e:
-            logger.error(f"Error in is_running command: {e}", exc_info=True)
+            logger.error(f"Error checking running status for all servers: {e}", exc_info=True)
+            await self._reply_or_log(update, f"⚠️ Failed to check running status: {e}")
 
     @authorized_only
     async def log(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Retrieves and sends log files for a specific server."""
+        if await self._handle_missing_args(update, CMD_USAGE_LOG, context.args, 1):
+            return
+
+        server_name = context.args[0]
+        server = await self._get_server_or_reply(update, server_name)
+        if not server:
+            return
+
         try:
-            if len(context.args) < 1:
-                if update.message:
-                    await update.message.reply_text("Usage: /log <name>")
-                else:
-                    logger.warning("Update message is None in log command.")
-                return
-
-            server = self.server_manager.get_server(context.args[0])
-            if not server:
-                if update.message:
-                    await update.message.reply_text(f"❌ Server '{context.args[0]}' not found.")
-                else:
-                    logger.warning("Update message is None when server not found in log command.")
-                return
-
             # Inform the user that we're processing their request
             if update.message:
                 status_message = await update.message.reply_text("⏳ Downloading log files. Please wait...")
 
-            try:
-                # Get logs (now returns a dictionary with file paths)
-                log_result = await server.get_log(self.config)
+            # Get logs (now returns a dictionary with file paths)
+            log_result = await server.get_log(self.config)
 
-                if log_result["status"] == "error":
-                    if update.message:
-                        await update.message.reply_text(f"⚠️ {log_result['message']}")
-                    return
+            if log_result.get("status") == "error":
+                await status_message.edit_text(f"⚠️ {log_result.get('message')}")
+                return
 
-                # If successful, send each file to the user
-                if update.message and log_result["status"] == "success":
-                    # First update the status message
-                    await status_message.edit_text("✅ Log files downloaded successfully. Sending files...")
+            files = log_result.get("files", {})
+            if not files:
+                await status_message.edit_text(f"⚠️ No log files found for '{server_name}'")
+                return
 
-                    # Send a message with log information
-                    info_text = f"📊 Log files for server '{server.name}':\n"
+            # Update the status message
+            await status_message.edit_text("✅ Log files downloaded successfully. Sending files...")
 
-                    # Send each log file
-                    files = log_result.get("files", {})
-                    if not files:
-                        await update.message.reply_text(f"⚠️ No log files found for '{server.name}'")
-                        return
-
-                    # Send files one by one
-                    for filename, filepath in files.items():
-                        with open(filepath, 'rb') as file:
-                            await update.message.reply_document(
-                                document=file,
-                                filename=filename,
-                                caption=f"📄 {filename} for server '{server.name}'"
-                            )
-                        info_text += f"- {filename}\n"
-
-                    # Also send the original zip file if needed
-                    # with open(log_result["zip_path"], 'rb') as zip_file:
-                    #     await update.message.reply_document(
-                    #         document=zip_file,
-                    #         filename=f"{server.name}_logs.zip",
-                    #         caption=f"📦 All log files for server '{server.name}' (ZIP)"
-                    #     )
-
-                    # Final confirmation message
-                    await update.message.reply_text(f"✅ All log files for '{server.name}' have been sent.")
-
-            except Exception as e:
+            # Send files one by one
+            for filename, filepath in files.items():
                 if update.message:
-                    await update.message.reply_text(f"⚠️ Failed to retrieve logs of '{server.name}': {e}")
-                logger.error(f"Error retrieving log: {e}", exc_info=True)
+                    with open(filepath, 'rb') as file:
+                        await update.message.reply_document(
+                            document=file,
+                            filename=filename,
+                            caption=f"📄 Log file: `{filename}` for server `{server_name}`"
+                        )
+
+            # Final confirmation message
+            await self._reply_or_log(update, f"✅ All log files for `{server_name}` have been sent.")
 
         except Exception as e:
-            logger.error(f"Error in log command: {e}", exc_info=True)
+            logger.error(f"Error retrieving logs for '{server_name}': {e}", exc_info=True)
+            if update.message:
+                await update.message.reply_text(f"⚠️ Failed to retrieve logs: {e}")
 
     @authorized_only
     async def stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Get detailed login statistics for a PSN server"""
-        try:
-            if len(context.args) < 1:
-                if update.message:
-                    await update.message.reply_text("📋 **Usage**: `/stats <server_name>`\n\nExample: `/stats psn1`")
-                return
-                
-            server = self.server_manager.get_server(context.args[0])
-            if not server:
-                if update.message:
-                    await update.message.reply_text(f"❌ Server '{context.args[0]}' not found.\n\nUse `/list` to see available servers.")
-                return
+        """Gets detailed login statistics for a PSN server."""
+        if await self._handle_missing_args(update, CMD_USAGE_STATS, context.args, 1):
+            return
 
+        server_name = context.args[0]
+        server = await self._get_server_or_reply(update, server_name)
+        if not server:
+            return
+
+        try:
             stats_info = await server.get_statistics(self.config)
-            if update.message:
-                await update.message.reply_text(stats_info, parse_mode='Markdown')
+            await self._reply_or_log(update, stats_info)
         except Exception as e:
-            logger.error(f"Error in stats command: {e}", exc_info=True)
-            if update.message:
-                await update.message.reply_text(f"⚠️ Failed to get statistics: {e}")
-
-    @authorized_only
-    async def logs(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Enhanced log command with line count parameter"""
-        try:
-            if len(context.args) < 1:
-                if update.message:
-                    await update.message.reply_text("📋 **Usage**: `/logs <server_name> [lines]`\n\nExample: `/logs psn1 100`")
-                return
-                
-            server = self.server_manager.get_server(context.args[0])
-            if not server:
-                if update.message:
-                    await update.message.reply_text(f"❌ Server '{context.args[0]}' not found.")
-                return
-                
-            # Get number of lines from second argument, default to 50
-            lines = 50
-            if len(context.args) > 1:
-                try:
-                    lines = int(context.args[1])
-                    if lines <= 0 or lines > 500:
-                        lines = 50
-                except ValueError:
-                    lines = 50
-                    
-            log_data = await server.get_log(self.config, lines)
-            if update.message:
-                await update.message.reply_text(log_data, parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Error in logs command: {e}", exc_info=True)
-            if update.message:
-                await update.message.reply_text(f"⚠️ Failed to retrieve log: {e}")
+            logger.error(f"Error getting stats for '{server_name}': {e}", exc_info=True)
+            await self._reply_or_log(update, f"⚠️ Failed to get statistics: {e}")
