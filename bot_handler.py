@@ -216,6 +216,7 @@ class BotHandler:
                 else:
                     logger.warning("Update message is None in log command.")
                 return
+
             server = self.server_manager.get_server(context.args[0])
             if not server:
                 if update.message:
@@ -223,16 +224,60 @@ class BotHandler:
                 else:
                     logger.warning("Update message is None when server not found in log command.")
                 return
+
+            # Inform the user that we're processing their request
+            if update.message:
+                status_message = await update.message.reply_text("⏳ Downloading log files. Please wait...")
+
             try:
-                log_data = await server.get_log(self.config)
-                if update.message:
-                    await update.message.reply_text(f"✅ Log of '{server.name}':\n{log_data}")
-                else:
-                    logger.warning("Update message is None after retrieving log.")
+                # Get logs (now returns a dictionary with file paths)
+                log_result = await server.get_log(self.config)
+
+                if log_result["status"] == "error":
+                    if update.message:
+                        await update.message.reply_text(f"⚠️ {log_result['message']}")
+                    return
+
+                # If successful, send each file to the user
+                if update.message and log_result["status"] == "success":
+                    # First update the status message
+                    await status_message.edit_text("✅ Log files downloaded successfully. Sending files...")
+
+                    # Send a message with log information
+                    info_text = f"📊 Log files for server '{server.name}':\n"
+
+                    # Send each log file
+                    files = log_result.get("files", {})
+                    if not files:
+                        await update.message.reply_text(f"⚠️ No log files found for '{server.name}'")
+                        return
+
+                    # Send files one by one
+                    for filename, filepath in files.items():
+                        with open(filepath, 'rb') as file:
+                            await update.message.reply_document(
+                                document=file,
+                                filename=filename,
+                                caption=f"📄 {filename} for server '{server.name}'"
+                            )
+                        info_text += f"- {filename}\n"
+
+                    # Also send the original zip file if needed
+                    # with open(log_result["zip_path"], 'rb') as zip_file:
+                    #     await update.message.reply_document(
+                    #         document=zip_file,
+                    #         filename=f"{server.name}_logs.zip",
+                    #         caption=f"📦 All log files for server '{server.name}' (ZIP)"
+                    #     )
+
+                    # Final confirmation message
+                    await update.message.reply_text(f"✅ All log files for '{server.name}' have been sent.")
+
             except Exception as e:
                 if update.message:
-                    await update.message.reply_text(f"⚠️ Failed to retrieve log of '{server.name}': {e}")
+                    await update.message.reply_text(f"⚠️ Failed to retrieve logs of '{server.name}': {e}")
                 logger.error(f"Error retrieving log: {e}", exc_info=True)
+
         except Exception as e:
             logger.error(f"Error in log command: {e}", exc_info=True)
 

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import requests
 import logging
 import time
+import os
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -130,32 +131,52 @@ class Server:
             logger.error(f"Error checking running status for {self.name}: {e}")
             return f"❌ Error: {str(e)}"
 
-    async def get_log(self, config, lines: int = 50) -> str:
-        """Get recent logs from the PSN checker"""
+    async def get_log(self, config, lines=None) -> dict:
+        """Download log files as a zip bundle and extract them"""
         try:
-            # Add lines parameter to the log endpoint
-            endpoint = f"{config.endpoints['log']}?lines={lines}"
-            result = self._make_request('GET', endpoint, config)
-            
-            if result:
-                log_content = result.get('log', 'No log content')
-                lines_count = result.get('lines_count', 0)
-                
-                if 'error' in result:
-                    return f"❌ Log Error: {result['error']}"
-                
-                if lines_count == 0:
-                    return "📝 No log entries found"
-                
-                # Truncate very long logs for Telegram
-                if len(log_content) > 4000:
-                    log_content = log_content[-4000:] + "\n\n... (truncated)"
-                
-                return f"📝 **Latest {lines_count} log lines**:\n\n```\n{log_content}\n```"
-            return "❌ Failed to get logs"
+            url = f"{config.base_url.format(address=self.address)}{config.endpoints['log']}"
+
+            # Create a download directory if it doesn't exist
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            download_dir = os.path.join(base_dir, "downloads", self.name)
+            os.makedirs(download_dir, exist_ok=True)
+
+            # Download the zip file
+            with requests.get(url, timeout=config.default_timeout, stream=True) as response:
+                response.raise_for_status()
+
+                # Save the zip file
+                zip_path = os.path.join(download_dir, "log_bundle.zip")
+                with open(zip_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+
+                # Extract the zip file
+                import zipfile
+                extracted_files = {}
+                with zipfile.ZipFile(zip_path, 'r') as zipf:
+                    zipf.extractall(download_dir)
+
+                    # Store paths to the extracted files
+                    for filename in ["failed_logins.json", "retry_accounts.json",
+                                    "login_process.log", "successful_logins.json"]:
+                        file_path = os.path.join(download_dir, filename)
+                        if os.path.exists(file_path):
+                            extracted_files[filename] = file_path
+
+                return {
+                    "status": "success",
+                    "message": f"Downloaded and extracted log files for {self.name}",
+                    "zip_path": zip_path,
+                    "files": extracted_files,
+                    "directory": download_dir
+                }
         except Exception as e:
-            logger.error(f"Error getting logs for {self.name}: {e}")
-            return f"❌ Error: {str(e)}"
+            logger.error(f"Error downloading logs for {self.name}: {e}")
+            return {
+                "status": "error",
+                "message": f"Error: {str(e)}"
+            }
 
     async def get_statistics(self, config) -> str:
         """Get detailed login statistics"""
